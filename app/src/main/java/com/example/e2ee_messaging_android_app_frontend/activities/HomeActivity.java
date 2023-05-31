@@ -14,6 +14,7 @@ import android.widget.PopupMenu;
 
 import com.example.e2ee_messaging_android_app_frontend.R;
 import com.example.e2ee_messaging_android_app_frontend.models.Room;
+import com.example.e2ee_messaging_android_app_frontend.networks.websocket.WebSocketClient;
 
 import java.util.List;
 
@@ -45,6 +46,11 @@ public class HomeActivity extends AppCompatActivity {
         });
     }
 
+    private void initWebSocket() {
+         WebSocketClient webSocketClient = new WebSocketClient("wss://10.0.2.2:8080");
+         webSocketClient.start();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -52,6 +58,7 @@ public class HomeActivity extends AppCompatActivity {
 
         initViews();
         initListeners();
+        initWebSocket();
     }
 
     @Override
