@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+        <item
+            android:id="@+id/action_profile_picture"
+            android:title="Upload profile picture" />
+        <item
+            android:id="@+id/action_edit_name"
+            android:title="Edit name" />
+
+</menu>
