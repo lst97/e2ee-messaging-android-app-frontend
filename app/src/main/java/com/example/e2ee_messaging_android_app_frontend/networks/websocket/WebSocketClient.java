@@ -2,6 +2,15 @@ package com.example.e2ee_messaging_android_app_frontend.networks.websocket;
 
 import androidx.annotation.NonNull;
 
+import com.example.e2ee_messaging_android_app_frontend.handler.ServicesHandler;
+import com.example.e2ee_messaging_android_app_frontend.helpers.RequestHelper;
+import com.example.e2ee_messaging_android_app_frontend.networks.api.Api;
+import com.example.e2ee_messaging_android_app_frontend.networks.request.Agreement;
+import com.example.e2ee_messaging_android_app_frontend.networks.request.MetadataType;
+import com.example.e2ee_messaging_android_app_frontend.services.session.SessionService;
+import com.example.e2ee_messaging_android_app_frontend.utils.HashUtil;
+import com.google.gson.Gson;
+
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
@@ -25,44 +34,27 @@ public class WebSocketClient extends WebSocketListener {
     private final String WS_URL;
     private WebSocket webSocket;
 
-    private SSLSocketFactory createSSLSocketFactory() {
-        try {
-            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(
-                    TrustManagerFactory.getDefaultAlgorithm());
-            trustManagerFactory.init((KeyStore) null);
-            TrustManager[] trustManagers = trustManagerFactory.getTrustManagers();
-
-            SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, trustManagers, new SecureRandom());
-
-            return sslContext.getSocketFactory();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
     public WebSocketClient(String webSocketUrl) {
         WS_URL = webSocketUrl;
 
     }
 
-    public void start() {
+    private OkHttpClient createSslClient(){
         TrustManager[] trustAllCerts = new TrustManager[] {
-            new X509TrustManager() {
-                @Override
-                public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                }
+                new X509TrustManager() {
+                    @Override
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                    }
 
-                @Override
-                public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                }
+                    @Override
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                    }
 
-                @Override
-                public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
+                    @Override
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
                 }
-            }
         };
 
         SSLContext sslContext = null;
@@ -73,11 +65,14 @@ public class WebSocketClient extends WebSocketListener {
             throw new RuntimeException(e);
         }
 
-
-        OkHttpClient client = new OkHttpClient.Builder()
+        return new OkHttpClient.Builder()
                 .sslSocketFactory(sslContext.getSocketFactory(), (X509TrustManager) trustAllCerts[0])
                 .hostnameVerifier((hostname, session) -> true)
                 .build();
+    }
+
+    public void start() {
+        OkHttpClient client = createSslClient();
 
         Request request = new Request.Builder()
                 .url(this.WS_URL)
@@ -90,17 +85,44 @@ public class WebSocketClient extends WebSocketListener {
         webSocket.close(1000, "Closing WebSocket connection");
     }
 
+    private Agreement createAgreement(){
+        SessionService sessionService = (SessionService) ServicesHandler.getInstance().getService(SessionService.class.getName());
+        String uuid = sessionService.getUserSession();
+
+        int deviceId = Api.getDeviceId("https://10.0.2.2:5000/api/v1/users/" + uuid);
+
+        String deviceName = null;
+        try {
+            deviceName = HashUtil.sha256(uuid);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        int signedPreKeyId = deviceId % 100;
+
+        return new Agreement(deviceId, deviceName, signedPreKeyId);
+    }
+
     @Override
     public void onOpen(WebSocket webSocket, @NonNull Response response) {
         // WebSocket connection is established
-        // You can send messages or perform any necessary actions here
-        webSocket.send("Hello, Server!");
+        // Request to register the user
+
+        Agreement agreement = createAgreement();
+
+        Gson gson = new Gson();
+        String agreementJson = gson.toJson(agreement);
+
+        RequestHelper request = new RequestHelper(MetadataType.AGREEMENT, agreementJson);
+
+        webSocket.send(gson.toJson(request));
     }
 
     @Override
     public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
         // Received a text message from the server
         // Handle the message as needed
+
+
         System.out.println("Received message: " + text);
     }
 
