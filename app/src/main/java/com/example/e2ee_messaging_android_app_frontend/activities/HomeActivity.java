@@ -17,6 +17,7 @@ import android.widget.PopupMenu;
 
 import com.example.e2ee_messaging_android_app_frontend.R;
 import com.example.e2ee_messaging_android_app_frontend.handler.ServicesHandler;
+import com.example.e2ee_messaging_android_app_frontend.helpers.KeyStoreHelper;
 import com.example.e2ee_messaging_android_app_frontend.helpers.ServiceHelper;
 import com.example.e2ee_messaging_android_app_frontend.models.Room;
 import com.example.e2ee_messaging_android_app_frontend.models.User;
@@ -33,12 +34,17 @@ import java.util.Base64;
 import java.util.List;
 
 public class HomeActivity extends AppCompatActivity {
+    public interface UserMappingCallback {
+        void onUserMappingComplete(List<User> users);
+    }
+
     Button btnNewIdentity;
     Button btnMenu;
     EditText searchInput;
     RecyclerView roomRecyclerView;
     WebSocketClient webSocketClient;
     List<Room> roomList;
+    List<User> userList;
 
     private void initViews(){
         btnNewIdentity = findViewById(R.id.home_new_id_btn);
@@ -65,37 +71,29 @@ public class HomeActivity extends AppCompatActivity {
         webSocketClient = new WebSocketClient("wss://10.0.2.2:8080");
     }
 
-    private void saveIdentity(KeysManagementService.SignalUser signalUser) {
-        Gson gson = new Gson();
-        String jsonString = gson.toJson(signalUser);
-
-        SharedPreferences sharedPreferences = this.getSharedPreferences(PreferenceType.SESSION, Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sharedPreferences.edit();
-        editor.putString("SIGNAL_USER", jsonString);
-        editor.apply();
-    }
-
-    private void updateDiscoveryServer(String uuid, KeysManagementService.SignalUser signalUser){
+    private void updateDiscoveryServer(String uuid, KeysManagementService.E2eeUser e2eeUser){
         // Convert public key to Base64 string
-        String publicKeyString = Base64.getEncoder().encodeToString(signalUser.getIdentityKeyPair().getPublicKey().serialize());
-        User user = new User(uuid, "", "", publicKeyString, String.valueOf(signalUser.getRegistrationId()));
+        String publicKeyString = null;
+        try {
+            publicKeyString = Base64.getEncoder().encodeToString(e2eeUser.getPublicKey().getEncoded());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        User user = new User(uuid, "", "", publicKeyString);
         Api.registerUser("https://10.0.2.2:5000/api/v1/users", user);
     }
 
     private void setupKeyStore() {
         ServicesHandler servicesHandler = ServicesHandler.getInstance();
         SessionService sessionService = (SessionService) servicesHandler.getService(SessionService.class.getName());
-        String uuid = sessionService.getUserSession();
         KeysManagementService keysManagementService = (KeysManagementService) servicesHandler.getService(KeysManagementService.class.getName());
 
         // TODO: Check if user already has a key pair
-        KeysManagementService.SignalUser signalUser = sessionService.getIdentity();
+        KeysManagementService.E2eeUser e2eeUser = sessionService.getIdentity();
 
-        if (signalUser == null) {
-            signalUser = keysManagementService.generateKeys();
-            sessionService.saveIdentity(signalUser);
-
-            updateDiscoveryServer(uuid, signalUser);
+        if (e2eeUser == null) {
+            e2eeUser = keysManagementService.generateKeyPair();
+            sessionService.saveIdentity(e2eeUser);
         }
     }
 
@@ -114,7 +112,36 @@ public class HomeActivity extends AppCompatActivity {
         initListeners();
         initServices();
         initWebSocket();
+//        SessionService sessionService = (SessionService) ServicesHandler.getInstance().getService(SessionService.class.getName());
+//        sessionService.removeUserSession();
         setupKeyStore();
+
+        SessionService sessionService = (SessionService) ServicesHandler.getInstance().getService(SessionService.class.getName());
+
+        KeysManagementService.E2eeUser e2eeUser = sessionService.getIdentity();
+        String uuid = sessionService.getUserSession();
+        updateDiscoveryServer(uuid, e2eeUser);
+        // webSocketClient.start();
+
+        // Get all users
+        Api.getAllUsers("https://10.0.2.2:5000/api/v1/users", new UserMappingCallback() {
+            @Override
+            public void onUserMappingComplete(List<User> users) {
+                userList = users;
+                // update UI
+            }
+        });
+
+
+        // Select a user to chat with
+
+        // Key exchange with the selected user
+
+        // Create a room with the selected user
+
+        // Send a message to the room
+
+
 
         // webSocketClient.start();
     }

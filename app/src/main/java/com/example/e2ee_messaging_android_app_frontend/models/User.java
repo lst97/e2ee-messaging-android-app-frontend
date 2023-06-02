@@ -1,27 +1,46 @@
 package com.example.e2ee_messaging_android_app_frontend.models;
 
 
+import com.example.e2ee_messaging_android_app_frontend.utils.HashUtil;
 import com.google.gson.annotations.Expose;
+
+import java.security.NoSuchAlgorithmException;
 
 // need to match the naming convention of the backend
 public class User {
+
+    private transient String uuid;
     @Expose
-    private String uuid;
+    private String hash;
     @Expose
     private String name;
     @Expose
     private String picture;
     @Expose
     private String public_key;
-    @Expose
-    private String registered_id;
 
-    public User(String uuid, String name, String picture, String key_pair, String registered_id) {
+    public User(String uuid, String name, String picture, String key_pair) {
         this.uuid = uuid;
+        try {
+            this.hash = HashUtil.sha256(uuid);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
         this.name = name;
         this.picture = picture;
         this.public_key = key_pair;
-        this.registered_id = registered_id;
+    }
+
+    public User(String name, String picture, String key_pair) {
+        this.uuid = "";
+        try {
+            this.hash = HashUtil.sha256(uuid);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        this.name = name;
+        this.picture = picture;
+        this.public_key = key_pair;
     }
 
     public String getUuid() {
@@ -56,11 +75,19 @@ public class User {
         this.public_key = public_key;
     }
 
-    public String getRegistered_id() {
-        return registered_id;
+    public String getHash() {
+        return hash;
     }
 
-    public void setRegistered_id(String registered_id) {
-        this.registered_id = registered_id;
+    public void setHash(String hash) {
+        this.hash = hash;
+    }
+
+    public String getPublic_key() {
+        return public_key;
+    }
+
+    public void setPublic_key(String public_key) {
+        this.public_key = public_key;
     }
 }

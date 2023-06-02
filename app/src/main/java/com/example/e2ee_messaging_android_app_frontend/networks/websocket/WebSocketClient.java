@@ -2,26 +2,32 @@ package com.example.e2ee_messaging_android_app_frontend.networks.websocket;
 
 import androidx.annotation.NonNull;
 
+import com.example.e2ee_messaging_android_app_frontend.handler.KeyExchangeHandler;
 import com.example.e2ee_messaging_android_app_frontend.handler.ServicesHandler;
+import com.example.e2ee_messaging_android_app_frontend.helpers.KeyStoreHelper;
 import com.example.e2ee_messaging_android_app_frontend.helpers.RequestHelper;
 import com.example.e2ee_messaging_android_app_frontend.networks.api.Api;
 import com.example.e2ee_messaging_android_app_frontend.networks.request.Agreement;
 import com.example.e2ee_messaging_android_app_frontend.networks.request.MetadataType;
 import com.example.e2ee_messaging_android_app_frontend.services.session.SessionService;
+import com.example.e2ee_messaging_android_app_frontend.utils.Cryptographic;
 import com.example.e2ee_messaging_android_app_frontend.utils.HashUtil;
 import com.google.gson.Gson;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.security.KeyManagementException;
-import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.Base64;
 
 
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 import okhttp3.OkHttpClient;
@@ -85,36 +91,51 @@ public class WebSocketClient extends WebSocketListener {
         webSocket.close(1000, "Closing WebSocket connection");
     }
 
-    private Agreement createAgreement(){
-        SessionService sessionService = (SessionService) ServicesHandler.getInstance().getService(SessionService.class.getName());
-        String uuid = sessionService.getUserSession();
-
-        int deviceId = Api.getDeviceId("https://10.0.2.2:5000/api/v1/users/" + uuid);
-
-        String deviceName = null;
-        try {
-            deviceName = HashUtil.sha256(uuid);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-        int signedPreKeyId = deviceId % 100;
-
-        return new Agreement(deviceId, deviceName, signedPreKeyId);
-    }
-
     @Override
     public void onOpen(WebSocket webSocket, @NonNull Response response) {
         // WebSocket connection is established
         // Request to register the user
 
-        Agreement agreement = createAgreement();
+    }
 
-        Gson gson = new Gson();
-        String agreementJson = gson.toJson(agreement);
+    private void handleKeyExchange(JSONObject data, JSONObject metadata){
+        String publicKeyBase64 = null;
+        String uuidHash = null;
+        try {
+            publicKeyBase64 = data.getString("public_key");
+            uuidHash = data.getString("hash");
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
+        }
 
-        RequestHelper request = new RequestHelper(MetadataType.AGREEMENT, agreementJson);
+        Base64.Decoder decoder = Base64.getDecoder();
+        byte[] publicKeyBytes = decoder.decode(publicKeyBase64);
 
-        webSocket.send(gson.toJson(request));
+        PublicKey publicKey = null;
+        try {
+            publicKey = KeyExchangeHandler.reconstructPublicKey(publicKeyBytes);
+            KeyExchangeHandler.receive(publicKey, webSocket);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String decodeMessage(JSONObject data, JSONObject metadata){
+        String messageBase64 = null;
+        PrivateKey privateKey = null;
+        try {
+            messageBase64 = data.getString("message");
+            Base64.Decoder decoder = Base64.getDecoder();
+            byte[] messageBytes = decoder.decode(messageBase64);
+
+            privateKey = KeyStoreHelper.getPrivateKey();
+            messageBytes = Cryptographic.decrypt(messageBytes, privateKey);
+
+            return new String(messageBytes);
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -122,8 +143,35 @@ public class WebSocketClient extends WebSocketListener {
         // Received a text message from the server
         // Handle the message as needed
 
+        // decode the message
+        JSONObject jsonMessage = null;
+        try {
+            jsonMessage = new JSONObject(text);
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
+        }
 
-        System.out.println("Received message: " + text);
+        try {
+            JSONObject data = jsonMessage.getJSONObject("data");
+
+            JSONObject metadata = jsonMessage.getJSONObject("metadata");
+            String type = metadata.getString("type");
+
+            switch (type){
+                case MetadataType.KEY_EXCHANGE:
+                    handleKeyExchange(data, metadata);
+                    break;
+                case MetadataType.MESSAGE:
+                    // encrypted message
+                    String message = decodeMessage(data, metadata);
+
+                    //TODO: Display to UI
+
+                    break;
+            }
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

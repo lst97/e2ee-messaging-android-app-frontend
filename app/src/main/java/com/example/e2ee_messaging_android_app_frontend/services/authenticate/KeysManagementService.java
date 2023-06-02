@@ -1,32 +1,39 @@
 package com.example.e2ee_messaging_android_app_frontend.services.authenticate;
 
+import android.content.Context;
 import android.os.StrictMode;
 
 import com.example.e2ee_messaging_android_app_frontend.handler.ServicesHandler;
+import com.example.e2ee_messaging_android_app_frontend.helpers.KeyStoreHelper;
 import com.example.e2ee_messaging_android_app_frontend.helpers.ServiceHelper;
 import com.example.e2ee_messaging_android_app_frontend.services.ServiceFactory;
 import com.example.e2ee_messaging_android_app_frontend.services.log.LogService;
 import com.example.e2ee_messaging_android_app_frontend.services.session.SessionService;
 
-import org.whispersystems.libsignal.IdentityKeyPair;
-import org.whispersystems.libsignal.InvalidKeyException;
-import org.whispersystems.libsignal.SignalProtocolAddress;
-import org.whispersystems.libsignal.state.PreKeyRecord;
-import org.whispersystems.libsignal.state.SignedPreKeyRecord;
-import org.whispersystems.libsignal.util.KeyHelper;
+import com.example.e2ee_messaging_android_app_frontend.helpers.KeyStoreHelper;
+import com.google.gson.annotations.Expose;
 
-import java.util.List;
-
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.util.Base64;
 
 
 public class KeysManagementService implements ServiceFactory {
     private final String serviceName;
     private final SessionService sessionService;
     private final LogService logService;
+    private final Context context;
 
     public KeysManagementService(ServiceHelper helper) {
         this.serviceName = helper.getServiceName();
         this.sessionService = (SessionService) ServicesHandler.getInstance().getService(SessionService.class.getName());
+        this.context = helper.getContext();
+
+        SessionService sessionService = (SessionService) ServicesHandler.getInstance().getService(SessionService.class.getName());
+        E2eeUser e2eeUser = sessionService.getIdentity();
+
+        KeyStoreHelper.setKeyAlias(this.sessionService.getUserSession());
+
 
         if (helper.isLogEnabled()) {
             this.logService = (LogService) ServicesHandler.getInstance().getService(LogService.class.getName());
@@ -36,69 +43,40 @@ public class KeysManagementService implements ServiceFactory {
 
     }
 
-    public static class SignalUser {
-        IdentityKeyPair identityKeyPair;
-        int registrationId;
-        List<PreKeyRecord> preKeys;
-        SignedPreKeyRecord signedPreKey;
-        SignalProtocolAddress address;
+    public class E2eeUser {
+        @Expose
+        private final String uuid;
+        @Expose
+        private String public_key;
 
-        SignalUser(String uuid, int deviceId, int signedPreKeyId) {
-            identityKeyPair = KeyHelper.generateIdentityKeyPair();
-            registrationId = KeyHelper.generateRegistrationId(false);
-            preKeys = KeyHelper.generatePreKeys(1, 100);
-            try {
-                signedPreKey = KeyHelper.generateSignedPreKey(identityKeyPair, signedPreKeyId);
-            } catch (InvalidKeyException e) {
-                throw new RuntimeException(e);
-            }
-            address = new SignalProtocolAddress(uuid, deviceId);
+        public E2eeUser(String uuid) throws Exception {
+            this.uuid = uuid;
+            KeyStoreHelper.generateKeyPair(KeysManagementService.this.context);
+            this.public_key = Base64.getEncoder().encodeToString(this.getPublicKey().getEncoded());
         }
 
-        public IdentityKeyPair getIdentityKeyPair() {
-            return identityKeyPair;
+        public String getUuid() {
+            return this.uuid;
         }
 
-        public void setIdentityKeyPair(IdentityKeyPair identityKeyPair) {
-            this.identityKeyPair = identityKeyPair;
+        public PublicKey getPublicKey() throws Exception {
+            // convert the public key to string
+            PublicKey pk = KeyStoreHelper.getPublicKey();
+            this.public_key = Base64.getEncoder().encodeToString(pk.getEncoded());
+            return pk;
         }
 
-        public int getRegistrationId() {
-            return registrationId;
-        }
-
-        public void setRegistrationId(int registrationId) {
-            this.registrationId = registrationId;
-        }
-
-        public List<PreKeyRecord> getPreKeys() {
-            return preKeys;
-        }
-
-        public void setPreKeys(List<PreKeyRecord> preKeys) {
-            this.preKeys = preKeys;
-        }
-
-        public SignedPreKeyRecord getSignedPreKey() {
-            return signedPreKey;
-        }
-
-        public void setSignedPreKey(SignedPreKeyRecord signedPreKey) {
-            this.signedPreKey = signedPreKey;
-        }
-
-        public SignalProtocolAddress getAddress() {
-            return address;
-        }
-
-        public void setAddress(SignalProtocolAddress address) {
-            this.address = address;
+        public PrivateKey getPrivateKey() throws Exception {
+            return KeyStoreHelper.getPrivateKey();
         }
     }
 
-    public SignalUser generateKeys() {
-        return new SignalUser(this.sessionService.getUserSession(), 1, 1);
-
+    public E2eeUser generateKeyPair() {
+        try {
+            return new E2eeUser(this.sessionService.getUserSession());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

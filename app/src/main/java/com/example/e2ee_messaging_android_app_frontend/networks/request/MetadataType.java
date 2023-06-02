@@ -7,4 +7,5 @@ public class MetadataType {
     public static final String NEW_USER = "NEW_USER";
     public static final String AGREEMENT = "AGREEMENT";
     public static final String API = "API";
+    public static final String KEY_EXCHANGE = "KEY_EXCHANGE";
 }

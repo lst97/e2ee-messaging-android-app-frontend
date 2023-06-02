@@ -12,6 +12,11 @@ import com.example.e2ee_messaging_android_app_frontend.services.log.LogTypes;
 import com.example.e2ee_messaging_android_app_frontend.utils.SecureUUIDGenerator;
 import com.google.gson.Gson;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.Base64;
+
 public class SessionService implements ServiceFactory {
     private final String serviceName;
     private final LogService logService;
@@ -30,7 +35,7 @@ public class SessionService implements ServiceFactory {
     }
 
     public void setUserSession() {
-        SharedPreferences userSession = context.getSharedPreferences(PreferenceType.UUID, Context.MODE_PRIVATE);
+        SharedPreferences userSession = context.getSharedPreferences(PreferenceType.SESSION, Context.MODE_PRIVATE);
         if(!userSession.contains(PreferenceType.UUID)) {
             SharedPreferences.Editor editor = userSession.edit();
             editor.putString(PreferenceType.UUID, SecureUUIDGenerator.generateSecureUUID().toString());
@@ -38,38 +43,51 @@ public class SessionService implements ServiceFactory {
         }
     }
 
-    public void saveIdentity(KeysManagementService.SignalUser signalUser) {
-        Gson gson = new Gson();
-        String jsonString = gson.toJson(signalUser);
-
+    public void saveIdentity(KeysManagementService.E2eeUser e2eeUser) {
         SharedPreferences sharedPreferences = context.getSharedPreferences(PreferenceType.SESSION, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
-        editor.putString(KeysManagementService.SignalUser.class.getName(), jsonString);
+        try {
+            editor.putString("PUBLIC_KEY", Base64.getEncoder().encodeToString(e2eeUser.getPublicKey().getEncoded()));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         editor.apply();
     }
 
-    public KeysManagementService.SignalUser getIdentity() {
+    public KeysManagementService.E2eeUser getIdentity() {
         SharedPreferences sharedPreferences = context.getSharedPreferences(PreferenceType.SESSION, Context.MODE_PRIVATE);
         // check if the user has a session
-        if(!sharedPreferences.contains(KeysManagementService.SignalUser.class.getName())) {
+        if(!sharedPreferences.contains(KeysManagementService.E2eeUser.class.getName())) {
             return null;
         }
-        String jsonString = sharedPreferences.getString(KeysManagementService.SignalUser.class.getName(), null);
+        String pk = sharedPreferences.getString("PUBLIC_KEY", "");
+        String uuid = sharedPreferences.getString("UUID", "");
+        if (pk.equals("") || uuid.equals("")) {
+            return null;
+        }
+
+        JSONObject jsonObject = new JSONObject();
+        try {
+            jsonObject.put("public_key", pk);
+            jsonObject.put("uuid", uuid);
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
+        }
 
         Gson gson = new Gson();
-        return gson.fromJson(jsonString, KeysManagementService.SignalUser.class);
+        return gson.fromJson(String.valueOf(jsonObject), KeysManagementService.E2eeUser.class);
     }
 
-    public KeysManagementService.SignalUser retrieveIdentity() {
+    public KeysManagementService.E2eeUser retrieveIdentity() {
         SharedPreferences sharedPreferences = context.getSharedPreferences(PreferenceType.SESSION, Context.MODE_PRIVATE);
-        String jsonString = sharedPreferences.getString(KeysManagementService.SignalUser.class.getName(), null);
+        String jsonString = sharedPreferences.getString(KeysManagementService.E2eeUser.class.getName(), null);
 
         Gson gson = new Gson();
-        return gson.fromJson(jsonString, KeysManagementService.SignalUser.class);
+        return gson.fromJson(jsonString, KeysManagementService.E2eeUser.class);
     }
 
     public String getUserSession() {
-        SharedPreferences userSession = context.getSharedPreferences(PreferenceType.UUID, Context.MODE_PRIVATE);
+        SharedPreferences userSession = context.getSharedPreferences(PreferenceType.SESSION, Context.MODE_PRIVATE);
 
         if(!userSession.contains(PreferenceType.UUID)) {
             setUserSession();
@@ -78,9 +96,11 @@ public class SessionService implements ServiceFactory {
     }
 
     public void removeUserSession() {
-        SharedPreferences userSession = context.getSharedPreferences(PreferenceType.UUID, Context.MODE_PRIVATE);
+        SharedPreferences userSession = context.getSharedPreferences(PreferenceType.SESSION, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = userSession.edit();
-        editor.remove(PreferenceType.UUID);
+
+        editor.remove("PUBLIC_KEY");
+        editor.remove("UUID");
         editor.apply();
     }
 
